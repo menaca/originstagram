@@ -29,6 +29,8 @@
       </div>
     </div>
 
+    <div class="highlights" id="highlights" aria-label="Öne çıkarılanlar"></div>
+
     <div class="tabs-container">
       <div class="tabs-header">
         <div class="tab active" data-tab="photos">
@@ -76,6 +78,32 @@
           <div class="modal-description" id="modalDescription"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="story-modal" id="storyModal" aria-hidden="true">
+    <div class="story-viewer" role="dialog" aria-modal="true" aria-label="Story görüntüleyici">
+      <div class="story-top">
+        <div class="story-progress" id="storyProgress" aria-hidden="true"></div>
+        <div class="story-header">
+          <div class="story-user">
+            <div class="story-avatar" id="storyAvatar" aria-hidden="true"></div>
+            <div class="story-user-meta">
+              <div class="story-title" id="storyTitle">Story</div>
+              <div class="story-subtitle" id="storySubtitle"></div>
+            </div>
+          </div>
+          <div class="story-actions">
+            <button class="story-audio" id="storyAudioBtn" aria-label="Sesi aç" type="button">Ses Aç</button>
+            <button class="story-close" id="storyCloseBtn" aria-label="Kapat" type="button">&times;</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="story-media" id="storyMedia"></div>
+
+      <button class="story-nav story-nav--left" id="storyPrev" aria-label="Önceki"></button>
+      <button class="story-nav story-nav--right" id="storyNext" aria-label="Sonraki"></button>
     </div>
   </div>
 

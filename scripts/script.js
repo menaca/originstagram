@@ -116,6 +116,55 @@ const postDescriptions = {
    "120": "120. post"
 };
 
+// Highlights (Instagram "öne çıkarılanlar")
+// webs: ilk iki resim, apps: sonraki iki resim
+const highlightsData = [
+    {
+        id: "webs",
+        title: "webs",
+        subtitle: "",
+        cover: "assets/highlights/webs-1.png",
+        avatar: "assets/highlights/webs-1.png",
+        stories: [
+            { type: "image", src: "assets/highlights/webs-1.png", durationMs: 5500 },
+            { type: "image", src: "assets/highlights/webs-2.png", durationMs: 5500 },
+        ],
+    },
+    {
+        id: "apps",
+        title: "apps",
+        subtitle: "",
+        cover: "assets/highlights/apps-1.png",
+        avatar: "assets/highlights/apps-1.png",
+        stories: [
+            { type: "image", src: "assets/highlights/apps-1.png", durationMs: 5500 },
+            { type: "image", src: "assets/highlights/apps-2.png", durationMs: 5500 },
+        ],
+    },
+    {
+        id: "scroll",
+        title: "📜",
+        subtitle: "",
+        cover: "assets/highlights/scroll-1.png",
+        avatar: "assets/highlights/scroll-1.png",
+        stories: [
+            { type: "image", src: "assets/highlights/scroll-1.png", durationMs: 5500 },
+            { type: "image", src: "assets/highlights/scroll-2.png", durationMs: 5500 },
+            { type: "image", src: "assets/highlights/scroll-3.png", durationMs: 5500 },
+        ],
+    },
+    {
+        id: "phone",
+        title: "📱",
+        subtitle: "",
+        cover: "assets/highlights/phone-1-cover.png",
+        avatar: "assets/highlights/phone-1-cover.png",
+        stories: [
+            { type: "video", src: "assets/highlights/phone-1.mp4" },
+        ],
+    },
+];
+
 
 document.getElementById("profile-image").src = profilePicturePath;
 
@@ -129,6 +178,7 @@ const toggleBtn = document.getElementById("themeToggle");
 const tabsContent = document.getElementById('tabsContent');
 const tabIndicator = document.querySelector('.tab-indicator');
 const tabs = document.querySelectorAll('.tab');
+const highlightsEl = document.getElementById("highlights");
 
 let currentTab = 'photos';
 let startX = 0;
@@ -387,6 +437,7 @@ window.addEventListener('DOMContentLoaded', () => {
         toggleBtn.textContent = '☀️';
     }
 
+    renderHighlights();
     renderPosts();
 
     const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -420,3 +471,351 @@ function renderLinks() {
 }
 
 document.addEventListener("DOMContentLoaded", renderLinks);
+
+// -------------------------
+// Highlights UI
+// -------------------------
+function renderHighlights() {
+    if (!highlightsEl) return;
+    highlightsEl.innerHTML = "";
+
+    highlightsData.forEach((h, index) => {
+        const btn = document.createElement("button");
+        btn.className = "highlight-btn";
+        btn.type = "button";
+        btn.setAttribute("aria-label", `${h.title} storylerini aç`);
+
+        const ring = document.createElement("div");
+        ring.className = "highlight-ring";
+        const avatar = document.createElement("div");
+        avatar.className = "highlight-avatar";
+
+        if (h.cover) {
+            const img = document.createElement("img");
+            img.src = h.cover;
+            img.alt = `${h.title} kapak`;
+            avatar.appendChild(img);
+        } else {
+            const fallback = document.createElement("div");
+            fallback.className = "highlight-fallback";
+            fallback.textContent = (h.title || "?").slice(0, 2).toUpperCase();
+            avatar.appendChild(fallback);
+        }
+
+        ring.appendChild(avatar);
+
+        const label = document.createElement("div");
+        label.className = "highlight-label";
+        label.textContent = h.title || "Story";
+
+        btn.appendChild(ring);
+        btn.appendChild(label);
+
+        btn.addEventListener("click", () => openStoryViewer(index, 0));
+
+        highlightsEl.appendChild(btn);
+    });
+}
+
+// -------------------------
+// Story Viewer (Instagram-like)
+// -------------------------
+const storyModal = document.getElementById("storyModal");
+const storyProgress = document.getElementById("storyProgress");
+const storyMedia = document.getElementById("storyMedia");
+const storyCloseBtn = document.getElementById("storyCloseBtn");
+const storyAudioBtn = document.getElementById("storyAudioBtn");
+const storyPrev = document.getElementById("storyPrev");
+const storyNext = document.getElementById("storyNext");
+const storyTitle = document.getElementById("storyTitle");
+const storySubtitle = document.getElementById("storySubtitle");
+const storyAvatar = document.getElementById("storyAvatar");
+
+let activeHighlightIndex = -1;
+let activeStoryIndex = -1;
+let storyRafId = null;
+let storyStartTs = 0;
+let storyElapsedBeforePause = 0;
+let storyPaused = false;
+let storyNavLock = false;
+let activeVideo = null;
+let currentStoryDurationMs = 5500;
+let storyMuted = true;
+
+function getActiveHighlight() {
+    return highlightsData[activeHighlightIndex] || null;
+}
+
+function getActiveStory() {
+    const h = getActiveHighlight();
+    if (!h) return null;
+    return h.stories[activeStoryIndex] || null;
+}
+
+function buildProgressSegments(total) {
+    if (!storyProgress) return;
+    storyProgress.innerHTML = "";
+    for (let i = 0; i < total; i++) {
+        const seg = document.createElement("div");
+        seg.className = "story-progress-seg";
+        const bar = document.createElement("div");
+        bar.className = "story-progress-bar";
+        seg.appendChild(bar);
+        storyProgress.appendChild(seg);
+    }
+}
+
+function setProgressUI(pct) {
+    if (!storyProgress) return;
+    const total = storyProgress.children.length;
+    for (let i = 0; i < total; i++) {
+        const bar = storyProgress.children[i]?.firstElementChild;
+        if (!bar) continue;
+
+        if (i < activeStoryIndex) bar.style.width = "100%";
+        else if (i > activeStoryIndex) bar.style.width = "0%";
+        else bar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    }
+}
+
+function cancelStoryRaf() {
+    if (storyRafId != null) cancelAnimationFrame(storyRafId);
+    storyRafId = null;
+}
+
+function pauseStory() {
+    if (storyPaused) return;
+    storyPaused = true;
+    storyElapsedBeforePause += performance.now() - storyStartTs;
+    if (activeVideo) activeVideo.pause();
+}
+
+function resumeStory() {
+    if (!storyPaused) return;
+    storyPaused = false;
+    storyStartTs = performance.now();
+    if (activeVideo) activeVideo.play().catch(() => {});
+    cancelStoryRaf();
+    storyRafId = requestAnimationFrame(tickStory);
+}
+
+function closeStoryViewer() {
+    cancelStoryRaf();
+    storyPaused = false;
+    storyElapsedBeforePause = 0;
+    activeHighlightIndex = -1;
+    activeStoryIndex = -1;
+    currentStoryDurationMs = 5500;
+    storyMuted = true;
+
+    if (activeVideo) {
+        try { activeVideo.pause(); } catch (_) {}
+        activeVideo = null;
+    }
+
+    if (storyModal) {
+        storyModal.classList.remove("active");
+        storyModal.setAttribute("aria-hidden", "true");
+    }
+    document.body.style.overflow = "";
+}
+
+function openStoryViewer(highlightIndex, storyIndex) {
+    const h = highlightsData[highlightIndex];
+    if (!h || !storyModal) return;
+
+    activeHighlightIndex = highlightIndex;
+    activeStoryIndex = Math.max(0, Math.min((h.stories?.length || 1) - 1, storyIndex || 0));
+    storyMuted = true;
+
+    if (storyTitle) storyTitle.textContent = h.title || "Story";
+    if (storySubtitle) storySubtitle.textContent = h.subtitle || "";
+
+    if (storyAvatar) {
+        storyAvatar.innerHTML = "";
+        if (h.avatar) {
+            const img = document.createElement("img");
+            img.src = h.avatar;
+            img.alt = "";
+            storyAvatar.appendChild(img);
+        }
+    }
+
+    buildProgressSegments(h.stories.length);
+    renderActiveStory();
+
+    storyModal.classList.add("active");
+    storyModal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+}
+
+function updateStoryAudioUI() {
+    if (!storyAudioBtn) return;
+    const story = getActiveStory();
+    const isVideo = !!story && story.type === "video";
+
+    storyAudioBtn.hidden = !isVideo;
+    storyAudioBtn.textContent = storyMuted ? "Ses Aç" : "Ses Kapat";
+    storyAudioBtn.setAttribute("aria-label", storyMuted ? "Sesi aç" : "Sesi kapat");
+}
+
+function renderActiveStory() {
+    const story = getActiveStory();
+    const h = getActiveHighlight();
+    if (!story || !h || !storyMedia) return;
+
+    updateStoryAudioUI();
+    cancelStoryRaf();
+    storyPaused = false;
+    storyElapsedBeforePause = 0;
+    setProgressUI(0);
+
+    if (activeVideo) {
+        try { activeVideo.pause(); } catch (_) {}
+        activeVideo = null;
+    }
+
+    storyMedia.innerHTML = "";
+
+    if (story.type === "video") {
+        const video = document.createElement("video");
+        video.src = story.src;
+        video.autoplay = true;
+        video.muted = storyMuted;
+        video.volume = storyMuted ? 0 : 1;
+        video.playsInline = true;
+        video.controls = false;
+        video.preload = "metadata";
+        storyMedia.appendChild(video);
+        activeVideo = video;
+
+        video.addEventListener("loadedmetadata", () => {
+            // Video story süresi: video uzunluğu (ms)
+            const durMs = Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : 0;
+            currentStoryDurationMs = Math.max(1200, durMs || 1200);
+            startStoryTick();
+        }, { once: true });
+
+        video.addEventListener("ended", () => nextStory(), { once: true });
+    } else {
+        const img = document.createElement("img");
+        img.src = story.src;
+        img.alt = "";
+        storyMedia.appendChild(img);
+
+        updateStoryAudioUI();
+        currentStoryDurationMs = typeof story.durationMs === "number" ? story.durationMs : 5500;
+
+        img.addEventListener("load", () => startStoryTick(), { once: true });
+        setTimeout(() => {
+            if (storyRafId != null) return;
+            startStoryTick();
+        }, 50);
+    }
+}
+
+function startStoryTick() {
+    storyStartTs = performance.now();
+    cancelStoryRaf();
+    storyRafId = requestAnimationFrame(tickStory);
+}
+
+function tickStory(ts) {
+    if (storyPaused) {
+        storyRafId = requestAnimationFrame(tickStory);
+        return;
+    }
+
+    const elapsed = storyElapsedBeforePause + (ts - storyStartTs);
+    const pct = (elapsed / currentStoryDurationMs) * 100;
+    setProgressUI(pct);
+
+    if (elapsed >= currentStoryDurationMs) {
+        nextStory();
+        return;
+    }
+
+    storyRafId = requestAnimationFrame(tickStory);
+}
+
+function prevStory() {
+    if (storyNavLock) return;
+    storyNavLock = true;
+    const h = getActiveHighlight();
+    if (!h) {
+        storyNavLock = false;
+        return;
+    }
+    if (activeStoryIndex > 0) {
+        activeStoryIndex -= 1;
+        renderActiveStory();
+    } else {
+        renderActiveStory();
+    }
+    setTimeout(() => { storyNavLock = false; }, 0);
+}
+
+function nextStory() {
+    if (storyNavLock) return;
+    storyNavLock = true;
+    const h = getActiveHighlight();
+    if (!h) {
+        storyNavLock = false;
+        return;
+    }
+    if (activeStoryIndex < h.stories.length - 1) {
+        activeStoryIndex += 1;
+        renderActiveStory();
+    } else {
+        closeStoryViewer();
+    }
+    setTimeout(() => { storyNavLock = false; }, 0);
+}
+
+if (storyCloseBtn) storyCloseBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeStoryViewer();
+});
+
+if (storyAudioBtn) storyAudioBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    storyMuted = !storyMuted;
+    if (activeVideo) {
+        activeVideo.muted = storyMuted;
+        activeVideo.volume = storyMuted ? 0 : 1;
+        // kullanıcı etkileşimi var; sesi açınca play dene
+        activeVideo.play().catch(() => {});
+    }
+    updateStoryAudioUI();
+});
+
+if (storyPrev) storyPrev.addEventListener("click", (e) => {
+    e.stopPropagation();
+    prevStory();
+});
+
+if (storyNext) storyNext.addEventListener("click", (e) => {
+    e.stopPropagation();
+    nextStory();
+});
+
+if (storyModal) {
+    storyModal.addEventListener("click", (e) => {
+        if (e.target === storyModal) closeStoryViewer();
+    });
+
+    storyModal.addEventListener("pointerdown", (e) => {
+        if (e.target === storyCloseBtn || e.target === storyAudioBtn) return;
+        pauseStory();
+    });
+    storyModal.addEventListener("pointerup", () => resumeStory());
+    storyModal.addEventListener("pointercancel", () => resumeStory());
+    storyModal.addEventListener("pointerleave", () => resumeStory());
+}
+
+document.addEventListener("keydown", (e) => {
+    if (!storyModal || !storyModal.classList.contains("active")) return;
+    if (e.key === "Escape") closeStoryViewer();
+    if (e.key === "ArrowLeft") prevStory();
+    if (e.key === "ArrowRight") nextStory();
+});
