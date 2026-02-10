@@ -3,6 +3,8 @@ let username = "menapps";
 let profilePicturePath = "assets/profile/pp.jpg";
 
 const pinnedPostIds = ["120","119","118"]; 
+// Instagram yeni oranlı (kare olmayan) postlar
+const nonSquareGridPostIds = ["106", "107", "108"];
 
 //Posts Path.
 const imageAssets = [
@@ -116,8 +118,7 @@ const postDescriptions = {
    "120": "120. post"
 };
 
-// Highlights (Instagram "öne çıkarılanlar")
-// webs: ilk iki resim, apps: sonraki iki resim
+// Highlights 
 const highlightsData = [
     {
         id: "webs",
@@ -249,6 +250,10 @@ function renderPosts() {
         container.appendChild(img);
 
         const postId = post.images[0].split('_')[0].replace(/\D/g, '');
+
+        if (nonSquareGridPostIds.includes(postId)) {
+            container.classList.add('post-container--nonsquare');
+        }
 
         if (pinnedPostIds.includes(postId)) {
             const pinIcon = document.createElement('div');
@@ -472,9 +477,7 @@ function renderLinks() {
 
 document.addEventListener("DOMContentLoaded", renderLinks);
 
-// -------------------------
-// Highlights UI
-// -------------------------
+
 function renderHighlights() {
     if (!highlightsEl) return;
     highlightsEl.innerHTML = "";
@@ -517,9 +520,7 @@ function renderHighlights() {
     });
 }
 
-// -------------------------
-// Story Viewer (Instagram-like)
-// -------------------------
+
 const storyModal = document.getElementById("storyModal");
 const storyProgress = document.getElementById("storyProgress");
 const storyMedia = document.getElementById("storyMedia");
